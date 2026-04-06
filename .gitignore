@@ -1,0 +1,30 @@
+## Build output
+bin/
+obj/
+out/
+
+## Logs
+logs/
+*.log
+
+## User-specific files
+*.user
+*.suo
+.vs/
+.vscode/
+
+## EF migrations snapshots (keep migrations, ignore designer files)
+**/Migrations/*Designer.cs
+
+## NuGet
+*.nupkg
+.nuget/
+packages/
+
+## Secrets - never push these
+**/appsettings.Development.json
+secrets.json
+
+## OS
+.DS_Store
+Thumbs.db
