@@ -1,6 +1,24 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace IdentityService.Models;
 
-public record RegisterRequest(string FullName, string Email, string Password, string Role);
+public static class UserRoles
+{
+    public const string JobSeeker = "JobSeeker";
+    public const string Recruiter = "Recruiter";
+    public const string Admin = "Admin";
+
+    public static readonly string[] All = [JobSeeker, Recruiter, Admin];
+
+    public static bool IsValid(string role) =>
+        All.Contains(role, StringComparer.OrdinalIgnoreCase);
+}
+
+public record RegisterRequest(
+    [Required] string FullName,
+    [Required][EmailAddress] string Email,
+    [Required][MinLength(6)] string Password,
+    [Required] string Role);
 public record LoginRequest(string Email, string Password);
 public record RefreshTokenRequest(string RefreshToken);
 public record ForgotPasswordRequest(string Email);

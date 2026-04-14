@@ -18,6 +18,12 @@ public class AuthService(
 {
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
     {
+        if (!UserRoles.IsValid(request.Role))
+            throw new InvalidOperationException($"Invalid role '{request.Role}'. Allowed roles: {string.Join(", ", UserRoles.All)}");
+
+        if (request.Role == UserRoles.Admin)
+            throw new InvalidOperationException("Admin accounts cannot be self-registered.");
+
         var existing = await userRepo.GetByEmailAsync(request.Email);
         if (existing is not null)
             throw new InvalidOperationException("Email already registered.");
