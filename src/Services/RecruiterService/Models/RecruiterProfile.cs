@@ -20,10 +20,13 @@ public class CandidatePipeline
     public Guid JobId { get; set; }
     public Guid CandidateId { get; set; }
     public Guid ApplicationId { get; set; }
-    public string Stage { get; set; } = "New"; // New | Shortlisted | Contacted | Rejected
+    public string Stage { get; set; } = "New";
     public string? Notes { get; set; }
     public bool ResumeViewed { get; set; } = false;
+    public DateTime? ResumeViewedAt { get; set; }       // when points were deducted
+    public DateTime? ResumeAccessExpiresAt { get; set; } // ViewedAt + 30 days
     public bool ContactUnlocked { get; set; } = false;
+    public DateTime? ContactUnlockedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

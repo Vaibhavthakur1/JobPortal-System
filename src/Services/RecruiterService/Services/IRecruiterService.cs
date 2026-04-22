@@ -13,6 +13,6 @@ public interface IRecruiterService
     Task<IEnumerable<PipelineDto>> GetPipelineAsync(Guid jobId, Guid recruiterId, string? stageFilter);
 
     // Points-based actions
-    Task<PipelineDto> ViewResumeAsync(Guid pipelineId, Guid recruiterId);
+    Task<CandidateResumeView> ViewResumeAsync(Guid pipelineId, Guid recruiterId);
     Task<PipelineDto> UnlockContactAsync(Guid pipelineId, Guid recruiterId);
 }

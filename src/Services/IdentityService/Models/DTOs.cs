@@ -19,11 +19,13 @@ public record RegisterRequest(
     [Required][EmailAddress] string Email,
     [Required][MinLength(6)] string Password,
     [Required] string Role);
+
+public record VerifyEmailOtpRequest(string Email, string Otp);
+public record ResendOtpRequest(string Email, string Purpose);
+public record ForgotPasswordRequest(string Email);
+public record VerifyForgotPasswordOtpRequest(string Email, string Otp, string NewPassword);
 public record LoginRequest(string Email, string Password);
 public record RefreshTokenRequest(string RefreshToken);
-public record ForgotPasswordRequest(string Email);
-public record ResetPasswordRequest(string Token, string NewPassword);
-public record VerifyEmailRequest(string Token);
 
 public record AuthResponse(
     string AccessToken,

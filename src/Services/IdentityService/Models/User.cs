@@ -13,6 +13,12 @@ public class User
     public DateTime? PasswordResetTokenExpiry { get; set; }
     public string? RefreshToken { get; set; }
     public DateTime? RefreshTokenExpiry { get; set; }
+
+    // OTP fields
+    public string? OtpCode { get; set; }
+    public DateTime? OtpExpiry { get; set; }
+    public string? OtpPurpose { get; set; } // EmailVerification | PasswordReset
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }

@@ -7,19 +7,20 @@ using IdentityService.Repositories;
 using MassTransit;
 using Microsoft.IdentityModel.Tokens;
 using Shared.Contracts.Events.Identity;
-using Shared.Contracts.Events.Notification;
 
 namespace IdentityService.Services;
 
 public class AuthService(
     IUserRepository userRepo,
     IConfiguration config,
-    IPublishEndpoint publisher) : IAuthService
+    IPublishEndpoint publisher,
+    IEmailService emailService) : IAuthService
 {
-    public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
+    // ─── Register ────────────────────────────────────────────────────────────
+    public async Task<string> RegisterAsync(RegisterRequest request)
     {
         if (!UserRoles.IsValid(request.Role))
-            throw new InvalidOperationException($"Invalid role '{request.Role}'. Allowed roles: {string.Join(", ", UserRoles.All)}");
+            throw new InvalidOperationException($"Invalid role '{request.Role}'. Allowed: {string.Join(", ", UserRoles.All)}");
 
         if (request.Role == UserRoles.Admin)
             throw new InvalidOperationException("Admin accounts cannot be self-registered.");
@@ -28,24 +29,76 @@ public class AuthService(
         if (existing is not null)
             throw new InvalidOperationException("Email already registered.");
 
+        var otp = GenerateOtp();
+
         var user = new User
         {
             FullName = request.FullName,
             Email = request.Email.ToLower(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Role = request.Role,
-            EmailVerificationToken = GenerateSecureToken()
+            OtpCode = otp,
+            OtpExpiry = DateTime.UtcNow.AddMinutes(10),
+            OtpPurpose = "EmailVerification"
         };
 
         await userRepo.AddAsync(user);
 
-        // publish events
-        await publisher.Publish(new UserRegisteredEvent(user.Id, user.Email, user.FullName, user.Role, user.CreatedAt));
-        await publisher.Publish(new EmailVerificationRequestedEvent(user.Id, user.Email, user.EmailVerificationToken!));
+        // Fire and forget — respond immediately, send email in background
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await emailService.SendOtpAsync(user.Email, user.FullName, otp, "EmailVerification");
+                await publisher.Publish(new UserRegisteredEvent(user.Id, user.Email, user.FullName, user.Role, user.CreatedAt));
+            }
+            catch { /* silent */ }
+        });
 
-        return GenerateAuthResponse(user);
+        return "Registration successful. Please check your email for the OTP to verify your account.";
     }
 
+    // ─── Verify Email OTP ────────────────────────────────────────────────────
+    public async Task VerifyEmailOtpAsync(VerifyEmailOtpRequest request)
+    {
+        var user = await userRepo.GetByEmailAsync(request.Email)
+            ?? throw new InvalidOperationException("User not found.");
+
+        if (user.IsEmailVerified)
+            throw new InvalidOperationException("Email already verified.");
+
+        ValidateOtp(user, request.Otp, "EmailVerification");
+
+        user.IsEmailVerified = true;
+        user.OtpCode = null;
+        user.OtpExpiry = null;
+        user.OtpPurpose = null;
+        await userRepo.UpdateAsync(user);
+    }
+
+    // ─── Resend OTP ──────────────────────────────────────────────────────────
+    public async Task ResendOtpAsync(ResendOtpRequest request)
+    {
+        var user = await userRepo.GetByEmailAsync(request.Email)
+            ?? throw new InvalidOperationException("User not found.");
+
+        if (request.Purpose == "EmailVerification" && user.IsEmailVerified)
+            throw new InvalidOperationException("Email already verified.");
+
+        var otp = GenerateOtp();
+        user.OtpCode = otp;
+        user.OtpExpiry = DateTime.UtcNow.AddMinutes(10);
+        user.OtpPurpose = request.Purpose;
+        await userRepo.UpdateAsync(user);
+
+        _ = Task.Run(async () =>
+        {
+            try { await emailService.SendOtpAsync(user.Email, user.FullName, otp, request.Purpose); }
+            catch { /* silent */ }
+        });
+    }
+
+    // ─── Login ───────────────────────────────────────────────────────────────
     public async Task<AuthResponse> LoginAsync(LoginRequest request)
     {
         var user = await userRepo.GetByEmailAsync(request.Email)
@@ -55,7 +108,7 @@ public class AuthService(
             throw new UnauthorizedAccessException("Invalid credentials.");
 
         if (!user.IsEmailVerified)
-            throw new UnauthorizedAccessException("Email not verified.");
+            throw new UnauthorizedAccessException("Please verify your email before logging in.");
 
         var response = GenerateAuthResponse(user);
         user.RefreshToken = response.RefreshToken;
@@ -65,6 +118,7 @@ public class AuthService(
         return response;
     }
 
+    // ─── Refresh Token ───────────────────────────────────────────────────────
     public async Task<AuthResponse> RefreshTokenAsync(string refreshToken)
     {
         var user = await userRepo.GetByRefreshTokenAsync(refreshToken)
@@ -81,46 +135,41 @@ public class AuthService(
         return response;
     }
 
+    // ─── Forgot Password ─────────────────────────────────────────────────────
     public async Task ForgotPasswordAsync(string email)
     {
         var user = await userRepo.GetByEmailAsync(email);
-        if (user is null) return; // silent fail for security
+        if (user is null) return; // silent fail
 
-        user.PasswordResetToken = GenerateSecureToken();
-        user.PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(1);
+        var otp = GenerateOtp();
+        user.OtpCode = otp;
+        user.OtpExpiry = DateTime.UtcNow.AddMinutes(10);
+        user.OtpPurpose = "PasswordReset";
         await userRepo.UpdateAsync(user);
 
-        await publisher.Publish(new SendNotificationEvent(
-            user.Id, "Email",
-            "Password Reset Request",
-            $"Use this token to reset your password: {user.PasswordResetToken}",
-            DateTime.UtcNow));
+        _ = Task.Run(async () =>
+        {
+            try { await emailService.SendOtpAsync(user.Email, user.FullName, otp, "PasswordReset"); }
+            catch { /* silent */ }
+        });
     }
 
-    public async Task ResetPasswordAsync(ResetPasswordRequest request)
+    // ─── Verify Forgot Password OTP + Reset ──────────────────────────────────
+    public async Task VerifyForgotPasswordOtpAsync(VerifyForgotPasswordOtpRequest request)
     {
-        var user = await userRepo.GetByResetTokenAsync(request.Token)
-            ?? throw new InvalidOperationException("Invalid or expired token.");
+        var user = await userRepo.GetByEmailAsync(request.Email)
+            ?? throw new InvalidOperationException("User not found.");
 
-        if (user.PasswordResetTokenExpiry < DateTime.UtcNow)
-            throw new InvalidOperationException("Token expired.");
+        ValidateOtp(user, request.Otp, "PasswordReset");
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
-        user.PasswordResetToken = null;
-        user.PasswordResetTokenExpiry = null;
+        user.OtpCode = null;
+        user.OtpExpiry = null;
+        user.OtpPurpose = null;
         await userRepo.UpdateAsync(user);
     }
 
-    public async Task VerifyEmailAsync(string token)
-    {
-        var user = await userRepo.GetByVerificationTokenAsync(token)
-            ?? throw new InvalidOperationException("Invalid verification token.");
-
-        user.IsEmailVerified = true;
-        user.EmailVerificationToken = null;
-        await userRepo.UpdateAsync(user);
-    }
-
+    // ─── Logout ──────────────────────────────────────────────────────────────
     public async Task LogoutAsync(Guid userId)
     {
         var user = await userRepo.GetByIdAsync(userId);
@@ -129,6 +178,22 @@ public class AuthService(
         user.RefreshTokenExpiry = null;
         await userRepo.UpdateAsync(user);
     }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+    private static void ValidateOtp(User user, string otp, string purpose)
+    {
+        if (user.OtpPurpose != purpose)
+            throw new InvalidOperationException("Invalid OTP purpose.");
+
+        if (user.OtpCode != otp)
+            throw new InvalidOperationException("Invalid OTP.");
+
+        if (user.OtpExpiry < DateTime.UtcNow)
+            throw new InvalidOperationException("OTP has expired. Please request a new one.");
+    }
+
+    private static string GenerateOtp() =>
+        Random.Shared.Next(100000, 999999).ToString();
 
     private AuthResponse GenerateAuthResponse(User user)
     {

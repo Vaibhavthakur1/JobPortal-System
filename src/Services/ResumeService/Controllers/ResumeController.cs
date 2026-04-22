@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using ResumeService.Models;
 using ResumeService.Services;
 using System.Security.Claims;
-
 namespace ResumeService.Controllers;
 
 [ApiController]
@@ -60,5 +59,15 @@ public class ResumeController(IResumeService resumeService) : ControllerBase
     {
         var pdfBytes = await resumeService.ExportPdfAsync(id, CurrentUserId);
         return File(pdfBytes, "application/octet-stream", $"resume_{id}.txt");
+    }
+
+    // Internal endpoint called by RecruiterService
+    [HttpGet("candidate/{userId:guid}/default")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetDefaultByUser(Guid userId)
+    {
+        var resumes = await resumeService.GetMyResumesAsync(userId);
+        var def = resumes.FirstOrDefault(r => r.IsDefault) ?? resumes.FirstOrDefault();
+        return def is null ? NotFound() : Ok(def);
     }
 }

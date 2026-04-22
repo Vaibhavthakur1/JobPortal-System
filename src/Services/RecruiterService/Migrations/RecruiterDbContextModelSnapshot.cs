@@ -37,6 +37,9 @@ namespace RecruiterService.Migrations
                     b.Property<bool>("ContactUnlocked")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("ContactUnlockedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -49,8 +52,14 @@ namespace RecruiterService.Migrations
                     b.Property<Guid>("RecruiterId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("ResumeAccessExpiresAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<bool>("ResumeViewed")
                         .HasColumnType("bit");
+
+                    b.Property<DateTime?>("ResumeViewedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Stage")
                         .IsRequired()

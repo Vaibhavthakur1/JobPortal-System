@@ -58,8 +58,8 @@ public class RecruiterController(IRecruiterService recruiterService) : Controlle
     [HttpPost("pipeline/{id:guid}/view-resume")]
     public async Task<IActionResult> ViewResume(Guid id)
     {
-        var entry = await recruiterService.ViewResumeAsync(id, CurrentUserId);
-        return Ok(entry);
+        var result = await recruiterService.ViewResumeAsync(id, CurrentUserId);
+        return Ok(result);
     }
 
     [HttpPost("pipeline/{id:guid}/unlock-contact")]
