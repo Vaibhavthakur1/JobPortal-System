@@ -12,4 +12,5 @@ public interface IAuthService
     Task ForgotPasswordAsync(string email);
     Task VerifyForgotPasswordOtpAsync(VerifyForgotPasswordOtpRequest request);
     Task LogoutAsync(Guid userId);
+    Task LogoutByTokenAsync(string refreshToken);
 }

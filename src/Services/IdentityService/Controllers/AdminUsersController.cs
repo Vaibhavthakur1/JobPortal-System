@@ -14,7 +14,17 @@ public class AdminUsersController(IUserRepository userRepo) : ControllerBase
     public async Task<IActionResult> GetUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         var users = await userRepo.GetAllAsync(page, pageSize);
-        return Ok(users.Select(u => new UserDto(u.Id, u.FullName, u.Email, u.Role, u.IsEmailVerified, u.CreatedAt)));
+        var totalCount = await userRepo.GetTotalCountAsync();
+        var userDtos = users.Select(u => new UserDto(u.Id, u.FullName, u.Email, u.Role, u.IsEmailVerified, u.CreatedAt)).ToList();
+        
+        return Ok(new
+        {
+            items = userDtos,
+            totalCount,
+            page,
+            pageSize,
+            totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+        });
     }
 
     [HttpPatch("{userId:guid}/role")]

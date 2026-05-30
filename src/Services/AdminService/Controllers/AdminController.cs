@@ -55,11 +55,12 @@ public class AdminController(IAuditRepository auditRepo, IHttpClientFactory http
         return Ok(new FlaggedJobDto(flag.Id, flag.JobId, flag.FlaggedBy, flag.Reason, flag.Status, flag.CreatedAt));
     }
 
-    // User management — proxies to IdentityService
+    // User management — proxies to IdentityService (forward the caller's JWT)
     [HttpGet("users")]
     public async Task<IActionResult> GetUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         var client = httpClientFactory.CreateClient("IdentityService");
+        ForwardAuth(client);
         var response = await client.GetAsync($"/api/admin/users?page={page}&pageSize={pageSize}");
         var content = await response.Content.ReadAsStringAsync();
         return Content(content, "application/json");
@@ -69,6 +70,7 @@ public class AdminController(IAuditRepository auditRepo, IHttpClientFactory http
     public async Task<IActionResult> UpdateUserRole(Guid userId, [FromBody] UpdateUserRoleRequest request)
     {
         var client = httpClientFactory.CreateClient("IdentityService");
+        ForwardAuth(client);
         var response = await client.PatchAsJsonAsync($"/api/admin/users/{userId}/role", request);
         var content = await response.Content.ReadAsStringAsync();
         return Content(content, "application/json");
@@ -78,8 +80,17 @@ public class AdminController(IAuditRepository auditRepo, IHttpClientFactory http
     public async Task<IActionResult> DeactivateUser(Guid userId)
     {
         var client = httpClientFactory.CreateClient("IdentityService");
+        ForwardAuth(client);
         var response = await client.PatchAsync($"/api/admin/users/{userId}/deactivate", null);
         var content = await response.Content.ReadAsStringAsync();
         return Content(content, "application/json");
+    }
+
+    // Forward the incoming Authorization header to downstream services
+    private void ForwardAuth(System.Net.Http.HttpClient client)
+    {
+        var authHeader = Request.Headers["Authorization"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(authHeader))
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authHeader);
     }
 }

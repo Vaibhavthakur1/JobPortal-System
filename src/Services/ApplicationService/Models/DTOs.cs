@@ -1,6 +1,6 @@
 namespace ApplicationService.Models;
 
-public record SubmitApplicationRequest(Guid JobId, Guid ResumeId, string? CoverLetter);
+public record SubmitApplicationRequest(Guid JobId, Guid RecruiterId, Guid ResumeId, string? CoverLetter);
 public record UpdateStatusRequest(string NewStatus, string? Note);
 
 public record ApplicationDto(

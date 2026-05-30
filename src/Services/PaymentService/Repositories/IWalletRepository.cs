@@ -10,5 +10,6 @@ public interface IWalletRepository
     Task AddTransactionAsync(Transaction transaction);
     Task UpdateTransactionAsync(Transaction transaction);
     Task<Transaction?> GetTransactionAsync(Guid transactionId);
+    Task<Transaction?> GetTransactionByGatewayRefAsync(string gatewayRef);
     Task<IEnumerable<Transaction>> GetTransactionsAsync(Guid recruiterId, int page, int pageSize);
 }

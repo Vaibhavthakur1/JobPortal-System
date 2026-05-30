@@ -56,10 +56,11 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend",
-        builder => builder
-            .AllowAnyOrigin()
+        policy => policy
+            .WithOrigins("http://localhost:4200")   // Angular dev server
             .AllowAnyMethod()
-            .AllowAnyHeader());
+            .AllowAnyHeader()
+            .AllowCredentials());                   // Required for cookies
 });
 
 builder.Services.AddControllers();

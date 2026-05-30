@@ -36,4 +36,7 @@ public class UserRepository(IdentityDbContext db) : IUserRepository
 
     public async Task<IEnumerable<User>> GetAllAsync(int page, int pageSize) =>
         await db.Users.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+
+    public async Task<int> GetTotalCountAsync() =>
+        await db.Users.CountAsync();
 }

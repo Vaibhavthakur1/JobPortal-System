@@ -73,6 +73,9 @@ namespace ApplicationService.Migrations
                     b.Property<Guid>("JobSeekerId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid>("RecruiterId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("ResumeId")
                         .HasColumnType("uniqueidentifier");
 
@@ -85,6 +88,9 @@ namespace ApplicationService.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("JobSeekerId", "JobId")
+                        .HasDatabaseName("IX_Applications_JobSeeker_Job");
 
                     b.ToTable("Applications");
                 });

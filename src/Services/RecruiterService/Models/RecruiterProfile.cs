@@ -23,10 +23,12 @@ public class CandidatePipeline
     public string Stage { get; set; } = "New";
     public string? Notes { get; set; }
     public bool ResumeViewed { get; set; } = false;
-    public DateTime? ResumeViewedAt { get; set; }       // when points were deducted
-    public DateTime? ResumeAccessExpiresAt { get; set; } // ViewedAt + 30 days
+    public DateTime? ResumeViewedAt { get; set; }
+    public DateTime? ResumeAccessExpiresAt { get; set; }
     public bool ContactUnlocked { get; set; } = false;
     public DateTime? ContactUnlockedAt { get; set; }
+    public bool IsWithdrawn { get; set; } = false;
+    public DateTime? WithdrawnAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

@@ -42,4 +42,21 @@ public class NotificationsController(NotificationDbContext db) : ControllerBase
         await db.SaveChangesAsync();
         return NoContent();
     }
+
+    [HttpGet("unread-count")]
+    public async Task<IActionResult> UnreadCount()
+    {
+        var count = await db.Notifications.CountAsync(n => n.UserId == CurrentUserId && !n.IsRead);
+        return Ok(new { count });
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var notification = await db.Notifications.FindAsync(id);
+        if (notification is null || notification.UserId != CurrentUserId) return NotFound();
+        db.Notifications.Remove(notification);
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
 }

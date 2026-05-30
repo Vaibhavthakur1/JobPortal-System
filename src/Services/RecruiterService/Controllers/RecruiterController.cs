@@ -62,10 +62,10 @@ public class RecruiterController(IRecruiterService recruiterService) : Controlle
         return Ok(result);
     }
 
-    [HttpPost("pipeline/{id:guid}/unlock-contact")]
-    public async Task<IActionResult> UnlockContact(Guid id)
+    [HttpGet("pipeline/{id:guid}/resume-file")]
+    public async Task<IActionResult> DownloadResumeFile(Guid id)
     {
-        var entry = await recruiterService.UnlockContactAsync(id, CurrentUserId);
-        return Ok(entry);
+        var (data, contentType, fileName) = await recruiterService.GetResumeFileAsync(id, CurrentUserId);
+        return File(data, contentType, fileName);
     }
 }

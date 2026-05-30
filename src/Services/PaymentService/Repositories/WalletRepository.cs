@@ -42,6 +42,9 @@ public class WalletRepository(PaymentDbContext db) : IWalletRepository
     public async Task<Transaction?> GetTransactionAsync(Guid transactionId) =>
         await db.Transactions.FindAsync(transactionId);
 
+    public async Task<Transaction?> GetTransactionByGatewayRefAsync(string gatewayRef) =>
+        await db.Transactions.FirstOrDefaultAsync(t => t.PaymentGatewayRef == gatewayRef);
+
     public async Task<IEnumerable<Transaction>> GetTransactionsAsync(Guid recruiterId, int page, int pageSize) =>
         await db.Transactions
             .Where(t => t.RecruiterId == recruiterId)

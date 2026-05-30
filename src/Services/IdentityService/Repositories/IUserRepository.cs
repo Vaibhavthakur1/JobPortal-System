@@ -12,4 +12,5 @@ public interface IUserRepository
     Task AddAsync(User user);
     Task UpdateAsync(User user);
     Task<IEnumerable<User>> GetAllAsync(int page, int pageSize);
+    Task<int> GetTotalCountAsync();
 }

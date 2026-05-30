@@ -9,7 +9,8 @@ public class RecruiterService(
     IRecruiterRepository repo,
     IPublishEndpoint publisher,
     IHttpClientFactory httpClientFactory,
-    IConfiguration config) : IRecruiterService
+    IConfiguration config,
+    ILogger<RecruiterService> logger) : IRecruiterService
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
@@ -116,21 +117,35 @@ public class RecruiterService(
         return await FetchCandidateResumeAsync(entry.CandidateId, isAccessActive, entry.ResumeAccessExpiresAt);
     }
 
-    public async Task<PipelineDto> UnlockContactAsync(Guid pipelineId, Guid recruiterId)
+    public async Task<(byte[] Data, string ContentType, string FileName)> GetResumeFileAsync(Guid pipelineId, Guid recruiterId)
     {
         var entry = await repo.GetPipelineEntryAsync(pipelineId)
             ?? throw new KeyNotFoundException("Pipeline entry not found.");
         if (entry.RecruiterId != recruiterId) throw new UnauthorizedAccessException("Not authorized.");
 
-        if (!entry.ContactUnlocked)
-        {
-            await DeductPointsAsync(recruiterId, PointsCost.ContactUnlock, "Contact unlock");
-            entry.ContactUnlocked = true;
-            entry.ContactUnlockedAt = DateTime.UtcNow;
-            await repo.UpdatePipelineEntryAsync(entry);
-        }
+        var client = httpClientFactory.CreateClient("ResumeService");
+        // Use the internal candidate default endpoint to get the resume id, then download
+        var metaResponse = await client.GetAsync($"/api/resumes/candidate/{entry.CandidateId}/default");
+        if (!metaResponse.IsSuccessStatusCode)
+            throw new InvalidOperationException("Resume not found.");
 
-        return MapPipelineDto(entry);
+        var json = await metaResponse.Content.ReadAsStringAsync();
+        var resume = JsonSerializer.Deserialize<ResumeDto>(json, JsonOpts)
+            ?? throw new InvalidOperationException("Failed to read resume.");
+
+        if (resume.ResumeType != "Uploaded")
+            throw new InvalidOperationException("This resume is not an uploaded file.");
+
+        // Proxy the file download through ResumeService using a service-level token
+        // For now we call the internal download endpoint directly (no auth needed for internal calls)
+        var fileResponse = await client.GetAsync($"/api/resumes/{resume.Id}/download-uploaded-internal");
+        if (!fileResponse.IsSuccessStatusCode)
+            throw new InvalidOperationException("Failed to download resume file.");
+
+        var data = await fileResponse.Content.ReadAsByteArrayAsync();
+        var contentType = fileResponse.Content.Headers.ContentType?.MediaType ?? "application/pdf";
+        var fileName = resume.UploadedFileName ?? $"resume_{resume.Id}.pdf";
+        return (data, contentType, fileName);
     }
 
     // ─── Private Helpers ─────────────────────────────────────────────────────
@@ -143,34 +158,49 @@ public class RecruiterService(
             var client = httpClientFactory.CreateClient("ResumeService");
             var response = await client.GetAsync($"/api/resumes/candidate/{candidateId}/default");
 
+            logger.LogInformation("ResumeService response for candidate {CandidateId}: {Status}",
+                candidateId, response.StatusCode);
+
             if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("ResumeService returned {Status} for candidate {CandidateId}",
+                    response.StatusCode, candidateId);
                 return BuildEmptyResumeView(candidateId, isFullAccess, accessExpiresAt);
+            }
 
             var json = await response.Content.ReadAsStringAsync();
-            var resume = JsonSerializer.Deserialize<ResumeData>(json, JsonOpts);
+            logger.LogInformation("ResumeService raw JSON: {Json}", json);
+
+            var resume = JsonSerializer.Deserialize<ResumeDto>(json, JsonOpts);
             if (resume is null)
+            {
+                logger.LogWarning("Failed to deserialize resume for candidate {CandidateId}", candidateId);
                 return BuildEmptyResumeView(candidateId, isFullAccess, accessExpiresAt);
+            }
 
             return new CandidateResumeView(
                 CandidateId: candidateId,
                 IsFullAccess: isFullAccess,
                 AccessExpiresAt: accessExpiresAt,
-                FullName: resume.Personal.FullName,
-                Summary: resume.Personal.Summary,
-                Skills: resume.Skills,
-                Experiences: resume.Experiences.Select(e => new ExperiencePreview(
+                FullName: resume.Personal?.FullName ?? "Unknown",
+                Summary: resume.Personal?.Summary,
+                Skills: resume.Skills ?? [],
+                Experiences: (resume.Experiences ?? []).Select(e => new ExperiencePreview(
                     e.JobTitle, e.Company, e.Location, e.StartDate, e.EndDate, e.IsCurrent)).ToList(),
-                Educations: resume.Educations.Select(e => new EducationPreview(
+                Educations: (resume.Educations ?? []).Select(e => new EducationPreview(
                     e.Degree, e.FieldOfStudy, e.Institution, e.StartDate, e.EndDate)).ToList(),
-                // Contact details only if full access
-                Email: isFullAccess ? resume.Personal.Email : null,
-                Phone: isFullAccess ? resume.Personal.Phone : null,
-                LinkedInUrl: isFullAccess ? resume.Personal.LinkedInUrl : null,
-                GitHubUrl: isFullAccess ? resume.Personal.GitHubUrl : null
+                Email: resume.Personal?.Email,
+                Phone: resume.Personal?.Phone,
+                LinkedInUrl: resume.Personal?.LinkedInUrl,
+                GitHubUrl: resume.Personal?.GitHubUrl,
+                ResumeType: resume.ResumeType,
+                ResumeId: resume.Id,
+                UploadedFileName: resume.UploadedFileName
             );
         }
-        catch
+        catch (Exception ex)
         {
+            logger.LogError(ex, "Error fetching resume for candidate {CandidateId}", candidateId);
             return BuildEmptyResumeView(candidateId, isFullAccess, accessExpiresAt);
         }
     }
@@ -212,17 +242,32 @@ public class RecruiterService(
             p.Stage, p.Notes,
             p.ResumeViewed, p.ResumeViewedAt, p.ResumeAccessExpiresAt,
             isActive,
-            p.ContactUnlocked, p.ContactUnlockedAt,
+            p.IsWithdrawn, p.WithdrawnAt,
             p.CreatedAt);
     }
 }
 
-// Internal models for deserializing ResumeService response
-file record ResumeData(PersonalData Personal, List<string> Skills,
-    List<ExpData> Experiences, List<EduData> Educations);
-file record PersonalData(string FullName, string Email, string Phone,
+// Internal DTOs matching ResumeService's ResumeDto JSON shape exactly
+file record ResumeDto(
+    Guid Id, Guid UserId, string Title, string Template, bool IsDefault,
+    string? ResumeType, string? UploadedFileName,
+    PersonalInfoDto? Personal,
+    List<EducationDto>? Educations,
+    List<ExperienceDto>? Experiences,
+    List<string>? Skills,
+    List<ProjectDto>? Projects,
+    DateTime CreatedAt);
+
+file record PersonalInfoDto(
+    string FullName, string Email, string Phone, string Location,
     string? LinkedInUrl, string? GitHubUrl, string? Summary);
-file record ExpData(string JobTitle, string Company, string Location,
-    DateTime StartDate, DateTime? EndDate, bool IsCurrent);
-file record EduData(string Degree, string FieldOfStudy, string Institution,
-    DateTime StartDate, DateTime? EndDate);
+
+file record ExperienceDto(
+    Guid? Id, string Company, string JobTitle, string Location,
+    DateTime StartDate, DateTime? EndDate, bool IsCurrent, string Description);
+
+file record EducationDto(
+    Guid? Id, string Institution, string Degree, string FieldOfStudy,
+    DateTime StartDate, DateTime? EndDate, bool IsCurrent, string? Grade);
+
+file record ProjectDto(Guid? Id, string Name, string Description, string? Url, List<string> Technologies);

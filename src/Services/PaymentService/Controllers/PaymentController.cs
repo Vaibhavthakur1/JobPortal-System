@@ -30,6 +30,18 @@ public class PaymentController(IPaymentService paymentService) : ControllerBase
     }
 
     [Authorize(Roles = "Recruiter")]
+    [HttpPost("cancel")]
+    public async Task<IActionResult> Cancel([FromBody] CancelPaymentRequest request)
+    {
+        var allowed = new[] { "Cancelled", "Failed" };
+        if (!allowed.Contains(request.Status))
+            return BadRequest(new { message = "Invalid status. Use 'Cancelled' or 'Failed'." });
+
+        await paymentService.CancelPaymentAsync(CurrentUserId, request.OrderId, request.Status);
+        return Ok(new { message = "Transaction updated." });
+    }
+
+    [Authorize(Roles = "Recruiter")]
     [HttpGet("wallet")]
     public async Task<IActionResult> GetWallet()
     {
@@ -45,8 +57,8 @@ public class PaymentController(IPaymentService paymentService) : ControllerBase
         return Ok(result);
     }
 
-    // Internal endpoint called by RecruiterService to deduct points
-    [Authorize(Roles = "Recruiter,Admin")]
+    // Internal endpoint called by RecruiterService to deduct points — no JWT needed (service-to-service)
+    [AllowAnonymous]
     [HttpPost("deduct")]
     public async Task<IActionResult> Deduct([FromBody] DeductPointsRequest request)
     {

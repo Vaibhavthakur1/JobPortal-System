@@ -14,10 +14,12 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         modelBuilder.Entity<JobApplication>(e =>
         {
             e.HasKey(a => a.Id);
+            e.HasIndex(a => new { a.JobSeekerId, a.JobId }).HasDatabaseName("IX_Applications_JobSeeker_Job");
             e.Property(a => a.Status).HasMaxLength(50);
             e.HasMany(a => a.StatusHistory)
              .WithOne()
-             .HasForeignKey(h => h.ApplicationId);
+             .HasForeignKey(h => h.ApplicationId)
+             .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ApplicationStatusHistory>(e =>

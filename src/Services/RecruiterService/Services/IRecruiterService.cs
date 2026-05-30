@@ -14,5 +14,5 @@ public interface IRecruiterService
 
     // Points-based actions
     Task<CandidateResumeView> ViewResumeAsync(Guid pipelineId, Guid recruiterId);
-    Task<PipelineDto> UnlockContactAsync(Guid pipelineId, Guid recruiterId);
+    Task<(byte[] Data, string ContentType, string FileName)> GetResumeFileAsync(Guid pipelineId, Guid recruiterId);
 }

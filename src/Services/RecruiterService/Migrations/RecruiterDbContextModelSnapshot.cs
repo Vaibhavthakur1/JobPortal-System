@@ -43,6 +43,9 @@ namespace RecruiterService.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool>("IsWithdrawn")
+                        .HasColumnType("bit");
+
                     b.Property<Guid>("JobId")
                         .HasColumnType("uniqueidentifier");
 
@@ -67,6 +70,9 @@ namespace RecruiterService.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("WithdrawnAt")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");

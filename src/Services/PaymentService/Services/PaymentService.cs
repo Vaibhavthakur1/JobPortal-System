@@ -1,3 +1,6 @@
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using MassTransit;
 using PaymentService.Models;
 using PaymentService.Repositories;
@@ -5,31 +8,70 @@ using Shared.Contracts.Events.Payment;
 
 namespace PaymentService.Services;
 
-public class PaymentService(IWalletRepository walletRepo, IPublishEndpoint publisher, IConfiguration config) : IPaymentService
+public class PaymentService(
+    IWalletRepository walletRepo,
+    IPublishEndpoint publisher,
+    IConfiguration config,
+    IHttpClientFactory httpClientFactory,
+    ILogger<PaymentService> logger) : IPaymentService
 {
-    // Points pricing: 100 points = $1
-    private const int PointsPerDollar = 100;
+    // Pricing: 100 points = ₹99
+    private static decimal PointsToRupees(int points) =>
+        Math.Round((points / 100m) * 99m, 2);
 
     public async Task<PaymentInitResponse> InitiatePaymentAsync(Guid recruiterId, PaymentInitRequest request)
     {
-        var amount = (decimal)request.Points / PointsPerDollar;
-        var orderId = $"ORDER_{recruiterId}_{DateTime.UtcNow.Ticks}";
+        var amountInr   = PointsToRupees(request.Points);
+        var amountPaise = (long)(amountInr * 100); // Razorpay uses paise
+        var keyId       = config["Razorpay:KeyId"]!;
+        var keySecret   = config["Razorpay:KeySecret"]!;
 
-        // Create pending transaction
-        var wallet = await walletRepo.GetOrCreateAsync(recruiterId);
+        // Create Razorpay order via REST API
+        var client = httpClientFactory.CreateClient("Razorpay");
+        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{keyId}:{keySecret}"));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+
+        var body = JsonSerializer.Serialize(new
+        {
+            amount   = amountPaise,
+            currency = "INR",
+            receipt  = $"rcpt_{recruiterId}_{DateTime.UtcNow.Ticks}",
+            notes    = new { recruiterId = recruiterId.ToString(), points = request.Points.ToString() }
+        });
+
+        var response = await client.PostAsync("https://api.razorpay.com/v1/orders",
+            new StringContent(body, Encoding.UTF8, "application/json"));
+
+        string orderId;
+        if (response.IsSuccessStatusCode)
+        {
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            orderId = doc.RootElement.GetProperty("id").GetString()!;
+        }
+        else
+        {
+            var errorBody = await response.Content.ReadAsStringAsync();
+            logger.LogWarning("Razorpay order creation failed ({Status}): {Body}", response.StatusCode, errorBody);
+            // Fallback for local dev without valid secret
+            orderId = $"order_dev_{recruiterId}_{DateTime.UtcNow.Ticks}";
+        }
+
+        // Persist pending transaction
+        await walletRepo.GetOrCreateAsync(recruiterId);
         await walletRepo.AddTransactionAsync(new Transaction
         {
-            RecruiterId = recruiterId,
-            Type = "Purchase",
-            Points = request.Points,
-            Amount = amount,
-            Currency = request.Currency,
-            Reason = $"Purchase {request.Points} points",
-            Status = "Pending",
+            RecruiterId       = recruiterId,
+            Type              = "Purchase",
+            Points            = request.Points,
+            Amount            = amountInr,
+            Currency          = "INR",
+            Reason            = $"Purchase {request.Points} points",
+            Status            = "Pending",
             PaymentGatewayRef = orderId
         });
 
-        return new PaymentInitResponse(orderId, amount, request.Currency, config["Payment:GatewayKey"] ?? "test_key");
+        return new PaymentInitResponse(orderId, amountInr, "INR", keyId);
     }
 
     public async Task<WalletDto> ConfirmPaymentAsync(Guid recruiterId, PurchasePointsRequest request)
@@ -54,6 +96,14 @@ public class PaymentService(IWalletRepository walletRepo, IPublishEndpoint publi
             Guid.NewGuid(), recruiterId, request.Points, request.Amount, request.Currency, DateTime.UtcNow));
 
         return new WalletDto(recruiterId, wallet.PointsBalance, wallet.UpdatedAt ?? wallet.CreatedAt);
+    }
+
+    public async Task CancelPaymentAsync(Guid recruiterId, string orderId, string status)
+    {
+        var tx = await walletRepo.GetTransactionByGatewayRefAsync(orderId);
+        if (tx is null || tx.RecruiterId != recruiterId || tx.Status != "Pending") return;
+        tx.Status = status; // "Cancelled" or "Failed"
+        await walletRepo.UpdateTransactionAsync(tx);
     }
 
     public async Task<WalletDto> DeductPointsAsync(DeductPointsRequest request)

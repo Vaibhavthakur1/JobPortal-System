@@ -70,4 +70,36 @@ public class ResumeController(IResumeService resumeService) : ControllerBase
         var def = resumes.FirstOrDefault(r => r.IsDefault) ?? resumes.FirstOrDefault();
         return def is null ? NotFound() : Ok(def);
     }
+
+    /// <summary>Upload a PDF/DOC/DOCX resume file. Returns a ResumeDto that can be used when applying.</summary>
+    [HttpPost("upload")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> Upload([FromForm] string? title, IFormFile file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "No file provided." });
+
+        var resume = await resumeService.UploadAsync(CurrentUserId, title ?? string.Empty, file);
+        return CreatedAtAction(nameof(GetResume), new { id = resume.Id }, resume);
+    }
+
+    /// <summary>Download the original uploaded file for an uploaded resume.</summary>
+    [HttpGet("{id:guid}/download-uploaded")]
+    public async Task<IActionResult> DownloadUploaded(Guid id)
+    {
+        var (data, contentType, fileName) = await resumeService.DownloadUploadedAsync(id, CurrentUserId);
+        return File(data, contentType, fileName);
+    }
+
+    /// <summary>Internal service-to-service endpoint — no auth required.</summary>
+    [HttpGet("{id:guid}/download-uploaded-internal")]
+    [AllowAnonymous]
+    public async Task<IActionResult> DownloadUploadedInternal(Guid id)
+    {
+        var resume = await resumeService.GetByIdAsync(id);
+        if (resume is null) return NotFound();
+        // Use a dummy userId — internal call bypasses ownership check
+        var (data, contentType, fileName) = await resumeService.DownloadUploadedInternalAsync(id);
+        return File(data, contentType, fileName);
+    }
 }

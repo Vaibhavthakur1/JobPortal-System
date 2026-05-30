@@ -5,7 +5,10 @@ public class Resume
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid UserId { get; set; }
     public string Title { get; set; } = string.Empty;
-    public string Template { get; set; } = "Classic"; // Classic | Modern | Creative | ATS-Friendly
+    public string Template { get; set; } = "Classic"; // Classic | Modern | Creative | ATS-Friendly | Uploaded
+    public string ResumeType { get; set; } = "Built";  // Built | Uploaded
+    public string? UploadedFilePath { get; set; }       // relative path on disk for uploaded resumes
+    public string? UploadedFileName { get; set; }       // original file name shown to user
     public bool IsDefault { get; set; } = false;
     public PersonalInfo Personal { get; set; } = new();
     public List<Education> Educations { get; set; } = [];

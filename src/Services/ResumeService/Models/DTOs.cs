@@ -35,9 +35,13 @@ public record UpdateResumeRequest(
 
 public record ResumeDto(
     Guid Id, Guid UserId, string Title, string Template, bool IsDefault,
+    string ResumeType,           // "Built" | "Uploaded"
+    string? UploadedFileName,    // original file name for uploaded resumes
     PersonalInfoDto Personal,
     List<EducationDto> Educations,
     List<ExperienceDto> Experiences,
     List<string> Skills,
     List<ProjectDto> Projects,
     DateTime CreatedAt);
+
+public record UploadResumeRequest(string Title);  // title comes from form field, file from IFormFile

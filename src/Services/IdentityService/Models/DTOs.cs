@@ -32,6 +32,7 @@ public record AuthResponse(
     string RefreshToken,
     DateTime ExpiresAt,
     string Role,
-    Guid UserId);
+    Guid UserId,
+    string FullName);
 
 public record UserDto(Guid Id, string FullName, string Email, string Role, bool IsEmailVerified, DateTime CreatedAt);

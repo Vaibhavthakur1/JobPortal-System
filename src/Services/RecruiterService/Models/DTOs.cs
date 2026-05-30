@@ -12,28 +12,27 @@ public record PipelineDto(
     Guid Id, Guid RecruiterId, Guid JobId, Guid CandidateId, Guid ApplicationId,
     string Stage, string? Notes,
     bool ResumeViewed, DateTime? ResumeViewedAt, DateTime? ResumeAccessExpiresAt,
-    bool IsResumeAccessActive,   // true if within 30 days
-    bool ContactUnlocked, DateTime? ContactUnlockedAt,
+    bool IsResumeAccessActive,
+    bool IsWithdrawn, DateTime? WithdrawnAt,
     DateTime CreatedAt);
 
-// What recruiter sees when viewing a resume
+// What recruiter sees when viewing a resume — full contact always included after paying 10 pts
 public record CandidateResumeView(
     Guid CandidateId,
-    bool IsFullAccess,           // true = within 30 days, false = expired/not viewed
+    bool IsFullAccess,       // always true — kept for API compatibility
     DateTime? AccessExpiresAt,
-
-    // Always visible
     string FullName,
     string? Summary,
     List<string> Skills,
     List<ExperiencePreview> Experiences,
     List<EducationPreview> Educations,
-
-    // Only visible with full access
-    string? Email,               // null if no access
-    string? Phone,               // null if no access
-    string? LinkedInUrl,         // null if no access
-    string? GitHubUrl            // null if no access
+    string? Email,
+    string? Phone,
+    string? LinkedInUrl,
+    string? GitHubUrl,
+    string? ResumeType = null,
+    Guid? ResumeId = null,
+    string? UploadedFileName = null
 );
 
 public record ExperiencePreview(string JobTitle, string Company, string Location, DateTime StartDate, DateTime? EndDate, bool IsCurrent);
@@ -42,7 +41,6 @@ public record EducationPreview(string Degree, string FieldOfStudy, string Instit
 // Points cost config
 public static class PointsCost
 {
-    public const int ResumeView = 5;
-    public const int ContactUnlock = 10;
+    public const int ResumeView = 10;
     public const int ResumeAccessDays = 30;
 }

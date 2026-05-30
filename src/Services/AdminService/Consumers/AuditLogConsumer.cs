@@ -33,7 +33,7 @@ public class ApplicationStatusAuditConsumer(IAuditRepository auditRepo) : IConsu
             UserId = msg.JobSeekerId,
             Action = "ApplicationStatusChanged",
             Entity = "Application",
-            EntityId = msg.ApplicationId.ToString(),
+            EntityId = msg.CorrelationId.ToString(),
             OldValues = msg.OldStatus,
             NewValues = msg.NewStatus
         });

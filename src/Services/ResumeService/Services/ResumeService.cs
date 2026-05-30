@@ -140,6 +140,82 @@ public class ResumeService(IResumeRepository repo) : IResumeService
         return Encoding.UTF8.GetBytes(sb.ToString());
     }
 
+    public async Task<ResumeDto> UploadAsync(Guid userId, string title, IFormFile file)
+    {
+        // Validate file type — PDF only
+        var allowedExtensions = new[] { ".pdf" };
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!allowedExtensions.Contains(ext))
+            throw new InvalidOperationException("Only PDF files are allowed.");
+
+        if (file.Length > 5 * 1024 * 1024)
+            throw new InvalidOperationException("File size must not exceed 5 MB.");
+
+        // Save file to uploads folder
+        var uploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "uploads", "resumes", userId.ToString());
+        Directory.CreateDirectory(uploadsDir);
+
+        var safeFileName = $"{Guid.NewGuid()}{ext}";
+        var filePath = Path.Combine(uploadsDir, safeFileName);
+
+        await using (var stream = new FileStream(filePath, FileMode.Create))
+            await file.CopyToAsync(stream);
+
+        var existing = await repo.GetByUserAsync(userId);
+        var isFirst = !existing.Any();
+
+        var resume = new Resume
+        {
+            UserId = userId,
+            Title = string.IsNullOrWhiteSpace(title) ? Path.GetFileNameWithoutExtension(file.FileName) : title,
+            Template = "Uploaded",
+            ResumeType = "Uploaded",
+            UploadedFilePath = filePath,
+            UploadedFileName = file.FileName,
+            IsDefault = isFirst,
+            Skills = [],
+            Personal = new PersonalInfo { FullName = string.Empty, Email = string.Empty, Phone = string.Empty, Location = string.Empty }
+        };
+        resume.Personal.ResumeId = resume.Id;
+
+        await repo.AddAsync(resume);
+        return MapToDto(resume);
+    }
+
+    public async Task<(byte[] Data, string ContentType, string FileName)> DownloadUploadedAsync(Guid resumeId, Guid userId)
+    {
+        var resume = await repo.GetByIdAsync(resumeId)
+            ?? throw new KeyNotFoundException("Resume not found.");
+        if (resume.UserId != userId) throw new UnauthorizedAccessException("Not authorized.");
+        return await ReadUploadedFile(resume);
+    }
+
+    public async Task<(byte[] Data, string ContentType, string FileName)> DownloadUploadedInternalAsync(Guid resumeId)
+    {
+        var resume = await repo.GetByIdAsync(resumeId)
+            ?? throw new KeyNotFoundException("Resume not found.");
+        return await ReadUploadedFile(resume);
+    }
+
+    private static async Task<(byte[] Data, string ContentType, string FileName)> ReadUploadedFile(Resume resume)
+    {
+        if (resume.ResumeType != "Uploaded" || string.IsNullOrEmpty(resume.UploadedFilePath))
+            throw new InvalidOperationException("This resume has no uploaded file.");
+        if (!File.Exists(resume.UploadedFilePath))
+            throw new FileNotFoundException("Uploaded file not found on server.");
+
+        var bytes = await File.ReadAllBytesAsync(resume.UploadedFilePath);
+        var ext = Path.GetExtension(resume.UploadedFilePath).ToLowerInvariant();
+        var contentType = ext switch
+        {
+            ".pdf"  => "application/pdf",
+            ".doc"  => "application/msword",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            _       => "application/octet-stream"
+        };
+        return (bytes, contentType, resume.UploadedFileName ?? Path.GetFileName(resume.UploadedFilePath));
+    }
+
     // Mappers
     private static PersonalInfo MapPersonal(Guid resumeId, PersonalInfoDto d) => new()
     {
@@ -170,6 +246,7 @@ public class ResumeService(IResumeRepository repo) : IResumeService
 
     private static ResumeDto MapToDto(Resume r) => new(
         r.Id, r.UserId, r.Title, r.Template, r.IsDefault,
+        r.ResumeType, r.UploadedFileName,
         new PersonalInfoDto(r.Personal.FullName, r.Personal.Email, r.Personal.Phone,
             r.Personal.Location, r.Personal.LinkedInUrl, r.Personal.GitHubUrl, r.Personal.Summary),
         r.Educations.Select(e => new EducationDto(e.Id, e.Institution, e.Degree, e.FieldOfStudy,

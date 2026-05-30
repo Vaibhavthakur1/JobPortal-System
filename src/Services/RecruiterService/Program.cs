@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using RecruiterService.Consumers;
 using RecruiterService.Data;
 using RecruiterService.Repositories;
 using Serilog;
@@ -35,6 +36,9 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddMassTransit(x =>
 {
+    x.AddConsumer<ApplicationSubmittedConsumer>();
+    x.AddConsumer<ApplicationWithdrawnConsumer>();
+
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration["RabbitMQ:Host"], "/", h =>
@@ -42,7 +46,16 @@ builder.Services.AddMassTransit(x =>
             h.Username(builder.Configuration["RabbitMQ:Username"]!);
             h.Password(builder.Configuration["RabbitMQ:Password"]!);
         });
-        cfg.ConfigureEndpoints(ctx);
+
+        cfg.ReceiveEndpoint("recruiter-application-submitted", e =>
+        {
+            e.ConfigureConsumer<ApplicationSubmittedConsumer>(ctx);
+        });
+
+        cfg.ReceiveEndpoint("recruiter-application-withdrawn", e =>
+        {
+            e.ConfigureConsumer<ApplicationWithdrawnConsumer>(ctx);
+        });
     });
 });
 
@@ -63,9 +76,10 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend",
         builder => builder
-            .AllowAnyOrigin()
+            .WithOrigins("http://localhost:4200")
             .AllowAnyMethod()
-            .AllowAnyHeader());
+            .AllowAnyHeader()
+            .AllowCredentials());
 });
 
 builder.Services.AddControllers();
@@ -98,6 +112,7 @@ using (var scope = app.Services.CreateScope())
 
 app.UseSwagger();
 app.UseSwaggerUI();
+app.UseMiddleware<RecruiterService.Middleware.ExceptionMiddleware>();
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();

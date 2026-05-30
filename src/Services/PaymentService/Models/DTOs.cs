@@ -1,6 +1,7 @@
 namespace PaymentService.Models;
 
 public record PurchasePointsRequest(int Points, decimal Amount, string Currency, string PaymentGatewayRef);
+public record CancelPaymentRequest(string OrderId, string Status);
 public record DeductPointsRequest(Guid RecruiterId, int Points, string Reason);
 
 public record WalletDto(Guid RecruiterId, int PointsBalance, DateTime UpdatedAt);

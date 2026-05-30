@@ -179,6 +179,15 @@ public class AuthService(
         await userRepo.UpdateAsync(user);
     }
 
+    public async Task LogoutByTokenAsync(string refreshToken)
+    {
+        var user = await userRepo.GetByRefreshTokenAsync(refreshToken);
+        if (user is null) return;
+        user.RefreshToken = null;
+        user.RefreshTokenExpiry = null;
+        await userRepo.UpdateAsync(user);
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
     private static void ValidateOtp(User user, string otp, string purpose)
     {
@@ -200,7 +209,7 @@ public class AuthService(
         var expiry = DateTime.UtcNow.AddHours(1);
         var token = GenerateJwt(user, expiry);
         var refresh = GenerateSecureToken();
-        return new AuthResponse(token, refresh, expiry, user.Role, user.Id);
+        return new AuthResponse(token, refresh, expiry, user.Role, user.Id, user.FullName);
     }
 
     private string GenerateJwt(User user, DateTime expiry)

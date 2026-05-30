@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using NotificationService.Consumers;
 using NotificationService.Data;
+using NotificationService.Services;
 using Serilog;
 using System.Text;
 
@@ -18,6 +19,8 @@ builder.Host.UseSerilog();
 
 builder.Services.AddDbContext<NotificationDbContext>(opt =>
     opt.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opt =>
@@ -37,6 +40,7 @@ builder.Services.AddMassTransit(x =>
 {
     x.AddConsumer<SendNotificationConsumer>();
     x.AddConsumer<EmailVerificationConsumer>();
+    x.AddConsumer<ApplicationStatusEmailConsumer>();
 
     x.UsingRabbitMq((ctx, cfg) =>
     {
@@ -45,7 +49,21 @@ builder.Services.AddMassTransit(x =>
             h.Username(builder.Configuration["RabbitMQ:Username"]!);
             h.Password(builder.Configuration["RabbitMQ:Password"]!);
         });
-        cfg.ConfigureEndpoints(ctx);
+
+        cfg.ReceiveEndpoint("notification-send", e =>
+        {
+            e.ConfigureConsumer<SendNotificationConsumer>(ctx);
+        });
+
+        cfg.ReceiveEndpoint("notification-email-verification", e =>
+        {
+            e.ConfigureConsumer<EmailVerificationConsumer>(ctx);
+        });
+
+        cfg.ReceiveEndpoint("notification-application-status", e =>
+        {
+            e.ConfigureConsumer<ApplicationStatusEmailConsumer>(ctx);
+        });
     });
 });
 
@@ -53,9 +71,10 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend",
         builder => builder
-            .AllowAnyOrigin()
+            .WithOrigins("http://localhost:4200")
             .AllowAnyMethod()
-            .AllowAnyHeader());
+            .AllowAnyHeader()
+            .AllowCredentials());
 });
 
 builder.Services.AddControllers();

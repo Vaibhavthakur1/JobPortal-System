@@ -1,4 +1,6 @@
+using ApplicationService.Clients;
 using ApplicationService.Data;
+using ApplicationService.Middleware;
 using ApplicationService.Repositories;
 using ApplicationService.Sagas;
 using MassTransit;
@@ -39,7 +41,7 @@ builder.Services.AddMassTransit(x =>
     x.AddSagaStateMachine<ApplicationSaga, ApplicationSagaState>()
         .EntityFrameworkRepository(r =>
         {
-            r.ConcurrencyMode = ConcurrencyMode.Pessimistic;
+            r.ConcurrencyMode = ConcurrencyMode.Optimistic;
             r.AddDbContext<DbContext, ApplicationDbContext>((provider, opt) =>
                 opt.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
         });
@@ -51,20 +53,31 @@ builder.Services.AddMassTransit(x =>
             h.Username(builder.Configuration["RabbitMQ:Username"]!);
             h.Password(builder.Configuration["RabbitMQ:Password"]!);
         });
-        cfg.ConfigureEndpoints(ctx);
+
+        // Explicit saga endpoint
+        cfg.ReceiveEndpoint("application-saga", e =>
+        {
+            e.ConfigureSaga<ApplicationSagaState>(ctx);
+        });
     });
 });
 
 builder.Services.AddScoped<IApplicationRepository, ApplicationRepository>();
 builder.Services.AddScoped<ApplicationService.Services.IApplicationService, ApplicationService.Services.ApplicationService>();
 
+builder.Services.AddHttpClient<IIdentityClient, IdentityClient>(client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["Services:IdentityService"]!);
+});
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend",
         builder => builder
-            .AllowAnyOrigin()
+            .WithOrigins("http://localhost:4200")
             .AllowAnyMethod()
-            .AllowAnyHeader());
+            .AllowAnyHeader()
+            .AllowCredentials());
 });
 
 builder.Services.AddControllers();
@@ -97,6 +110,7 @@ using (var scope = app.Services.CreateScope())
 
 app.UseSwagger();
 app.UseSwaggerUI();
+app.UseMiddleware<ExceptionMiddleware>();
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();

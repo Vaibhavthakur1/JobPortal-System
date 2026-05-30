@@ -5,8 +5,9 @@ public class JobApplication
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid JobSeekerId { get; set; }
     public Guid JobId { get; set; }
+    public Guid RecruiterId { get; set; }   // stored at submit time so events always have it
     public Guid ResumeId { get; set; }
-    public string Status { get; set; } = "Draft"; // Draft→Submitted→Screening→Interview→Offered→Accepted/Rejected
+    public string Status { get; set; } = "Draft";
     public string? CoverLetter { get; set; }
     public bool IsWithdrawn { get; set; } = false;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

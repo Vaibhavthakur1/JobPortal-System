@@ -11,4 +11,7 @@ public interface IResumeService
     Task<ResumeDto?> GetByIdAsync(Guid resumeId);
     Task<IEnumerable<ResumeDto>> GetMyResumesAsync(Guid userId);
     Task<byte[]> ExportPdfAsync(Guid resumeId, Guid userId);
+    Task<ResumeDto> UploadAsync(Guid userId, string title, IFormFile file);
+    Task<(byte[] Data, string ContentType, string FileName)> DownloadUploadedAsync(Guid resumeId, Guid userId);
+    Task<(byte[] Data, string ContentType, string FileName)> DownloadUploadedInternalAsync(Guid resumeId);
 }
